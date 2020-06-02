@@ -178,6 +178,8 @@ Squid = {
 
 	sx = 1.0, sy = 1.0,	-- scale
 
+	target_x = 0, target_y = 0,  -- for motion
+
 	r = 0,				-- rotation
 	vr = 0,				-- rotational velocity
 	ra = 0,				-- rotational acceleration
@@ -260,79 +262,86 @@ border_height = (hover_grid_image.h * border_scale) + (sh / 2) - hover_grid_imag
 border_x = border_width - hover_grid_image.w * border_scale
 border_y = border_height - hover_grid_image.h * border_scale
 
+function check_overlap(sq1, sq2)
+	return hit_rect_rect(sq1.x, sq1.y, sq1.img.w, sq1.img.h, sq2.x, sq2.y, sq2.img.w, sq2.img.h);
+end
+
 particles = {}
-for i = 0, 10, 1 do
-	local sq = make_squid( pixi_image, sw / 2, sh / 2)
+for i = 0, 9, 1 do
+	local sq = make_squid( pixi_image, math.random(border_x, border_width), math.random(border_y, border_height))
+	sq.change_image_timer = 0
 	sq.alive = true
 
 	coin = roll(2) == 0 and -1 or 1
-	sq.vx = (math.random(1, 1000) / 1000) * coin 
+	sq.vx = (math.random(500, 1000) / 1000) * coin 
 	coin = roll(2) == 0 and -1 or 1
-	sq.vy = (math.random(1, 1000) / 1000) * coin
-	sq.tick = function(sq)
-		if sq.x >= border_width then 
-			sq.vx = math.random(1, 1000) / 1000 * -1
-		end
-		if sq.x <= border_x then 
-			sq.vx = math.random(1, 1000) / 1000 
-		end
-		if sq.y >= border_height then 
-			sq.vy = math.random(1, 1000) / 1000 * -1
-		end
-		if sq.y <= border_y then 
-			sq.vy = math.random(1, 1000) / 1000 
-		end
+	sq.vy = (math.random(500, 1000) / 1000) * coin
 
+	sq.tick = function(sq)
 		sq.collision = false
+		if sq.change_image_timer > 0 then
+			sq.change_image_timer = sq.change_image_timer - 1
+		else
+			sq.change_image_timer = 0
+		end
+		if math.abs(sq.vx) < .1 then
+			coin = roll(2) == 0 and -1 or 1
+			sq.vx = (math.random(500, 1000) / 1000) * coin 
+		end
+		if math.abs(sq.vy) < .1 then
+			coin = roll(2) == 0 and -1 or 1
+			sq.vy = (math.random(500, 1000) / 1000) * coin
+		end
 		-- collide with closed tiles
 		for j, row in pairs(grid) do
 			for l, tile in pairs(row) do
-				if tile.closed then
-					if hit_rect_rect(tile.x, tile.y, tile.img.w, tile.img.h, sq.x, sq.y, sq.img.w, sq.img.h) then
-						sq.vx = sq.vx * -1
-						sq.vy = sq.vy * -1
+				if hit_rect_rect(tile.x - tile.px, tile.y - tile.py, tile.img.w, tile.img.h, sq.x - sq.px, sq.y - sq.py, sq.img.w, sq.img.h) then
+					if tile.closed then
+						if sq.x + sq.vx - sq.px > tile.x - tile.px then
+							sq.vx = sq.vx * -1
+						end
+						if sq.y + sq.vy - sq.py > tile.y - tile.py then
+							sq.vy = sq.vy * -1
+						end
 						sq.collision = true
+					else
 					end
 				end
 			end
 		end
 
+		if sq.x + sq.vx > border_width then 
+			sq.vx = sq.vx * -1
+			sq.collision = true
+		end
+		if sq.x + sq.vx < border_x then 
+			sq.vx = sq.vx * -1 
+			sq.collision = true
+		end
+		if sq.y + sq.vy > border_height then 
+			sq.vy = sq.vy * -1
+			sq.collision = true
+		end
+		if sq.y + sq.vy < border_y then 
+			sq.vy = sq.vy * -1 
+			sq.collision = true
+		end
+
 		if sq.collision then
 			sq.img = pixi_image_red
+			sq.change_image_timer = 12
 		else
-			sq.img = pixi_image
+			if sq.change_image_timer == 0 then
+				sq.img = pixi_image
+			end
 		end
+			print(sq.change_image_timer)
+
 		newton(sq)
 	end
 
 	particles[i] = sq
 end
-
-player_image = get_image( "yellow_rect.bmp" );
-player = make_squid( player_image );
-player.x = sw * 0.5;
-player.y = sh * 0.5;
-player.target_x = sw * 0.5;
-player.target_y = sh * 0.5;
-player.a = 1;
-player.r = 0;
-player.tick = function( sq )
-
-	-- offx = abs( (sw / 2 ) - sq.x );
-	-- offy = abs( (sh / 2 ) - sq.y );
-	-- dist = 1 - ( sqrt( ( offx * offx ) + ( offy * offy ) ) * 0.011 );
-
-	--sq.a = dist;
-	--sq.sx = dist;
-	--sq.sy = dist;
-
-	sq.vx = ( sq.target_x - sq.x ) * 0.121;
-	sq.vy = ( sq.target_y - sq.y ) * 0.121;
-	-- sq.r = sq.r + (1 / 100);
-
-	newton( sq );
-end
-player.alive = true;
 
 img_star = get_image("logo.bmp");
 L( "star " .. img_star.w .. "," .. img_star.h );
@@ -354,8 +363,6 @@ star_set = make_squid_set(newStar, 2000)
 function make_star()
 	local sq = star_set:get()
 	if sq then
-		sq.x = player.x -- sw * 0.5; 
-		sq.y = player.y -- sh * 0.5; 
 		-- sq.sx = 0.01 * (roll( 20 ) + 1);
 		-- sq.sy = sq.sx
 		sq.a = 1
@@ -376,8 +383,6 @@ sound_played = 0
 
 function draw_all()
 
-	-- player:draw();
-
 	dy = 10 
 	dx = (sw * 0.5) - 60;
 	dy = (sh * 0.5) + 40;
@@ -395,7 +400,6 @@ function draw_all()
 	end
 end
 
-players = {} 
 function tick_all()
 	for i, pixi in pairs(particles) do
 		pixi:tick()
@@ -403,7 +407,7 @@ function tick_all()
 	for i, row in pairs(grid) do
 		for k, tile in pairs(row) do
 			if not tile.closed then
-				if hit_rect_rect(mx, my, 1, 1, tile.x, tile.y, tile.img.w, tile.img.h) then
+				if hit_xy_rect(mx, my, tile.x - tile.px, tile.y - tile.py, tile.img.w, tile.img.h) then
 					tile.img = hover_grid_image
 				else
 					tile.img = grid_image
@@ -440,7 +444,7 @@ function event_handler( t, id, x, y )
 		my = y;
 		for i, row in pairs(grid) do
 			for k, tile in pairs(row) do
-				if hit_rect_rect(mx, my, 1, 1, tile.x, tile.y, tile.img.w, tile.img.h) then
+				if hit_xy_rect(mx, my, tile.x - tile.px, tile.y - tile.py, tile.img.w, tile.img.h) then
 					tile.closed = not tile.closed	
 				end
 			end
@@ -462,7 +466,7 @@ function event_handler( t, id, x, y )
         end
         if key == 111 then -- o
             sound_played = squids_sound_play(sound, vol);
-            print(tostring(sound_played))
+            L(tostring(sound_played))
         end
         if key == 112 then -- p
             squids_sound_pause();
@@ -484,8 +488,6 @@ function event_handler( t, id, x, y )
 	if t == SQUIDS_EVENT_RESIZE then
 		sw = x;
 		sh = y;
-		player.target_x = sw * 0.5;
-		player.target_y = sh * 0.5;
 	end
 
 	if t == SQUIDS_EVENT_QUIT then
